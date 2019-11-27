@@ -1,3 +1,9 @@
+/*
+Operating Systems: Thread synchronizations in c programming language
+Names: Britney Beckford, Racquel Bailey, Shannon Henry, Rumone Anderson
+*/
+
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<pthread.h>
@@ -5,7 +11,7 @@
 #include<string.h>
 #include<unistd.h> 
 #include<stdbool.h>
-#define NUM_STUDENTS 50
+#define NUM_STUDENTS 15
 
 
 enum thread_state {
@@ -34,9 +40,8 @@ struct pcb {
     int TT;
 }typedef PCB;
 
-
-// pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-// pthread_cond_t condition_wait = PTHREAD_COND_INITIALIZER;
+volatile int running_threads = 0;
+pthread_mutex_t running_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // This controls access to refills
 sem_t barrel_access;
@@ -48,7 +53,8 @@ sem_t barrel_refill;
 PCB bartender;
 
 // size of the barrel to be modified by one thread at a time
-int barrel=50;
+// set to 10 for debugging
+volatile int barrel=10;
 
 
 void get_serving(PCB* s, bool* served);
@@ -67,18 +73,17 @@ void* bartender_function(void* arg);
 void print_thread_values(PCB pcb[], int size) {
     printf("BARREL: %d\n", barrel);
     printf("Number of students: %d\n", size);
-    printf("+-------+-------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+\n");
-    printf("| pid\t| tid\t| refilling\t| drinking\t| thinking\t| waiting\t| terminated\t| p_type\t| required\t| consumed\t| wake_count\t| TT\t\t|\n");
-    printf("+-------+-------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+\n");
+    printf("+-------+-------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+\n");
+    printf("| pid\t| tid\t| refilling\t| drinking\t| thinking\t| waiting\t| terminated\t| p_type\t| required\t| consumed\t| TT\t\t|\n");
+    printf("+-------+-------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+\n");
     for (int i = 0; i < size; i++)
     {
-        printf("| %d\t| %d\t| %d\t\t| %d\t\t| %d\t\t| %d\t\t| %d\t\t| %s\t| %d\t\t| %d\t\t| %d\t\t| %d\t\t|\n", pcb[i].pid, pcb[i].tid, (pcb[i].t_state == 1)?1:0, (pcb[i].t_state == 2)?1:0, (pcb[i].t_state == 3)?1:0, (pcb[i].t_state == 4)?1:0, (pcb[i].t_state == 5)?1:0, (pcb[i].p_type == Student)?"Student": "Bartender", pcb[i].lb_required, pcb[i].lb_consumed, pcb[i].wake_count, pcb[i].TT);
+        printf("| %d\t| %d\t| %d\t\t| %d\t\t| %d\t\t| %d\t\t| %d\t\t| %s\t| %d\t\t| %d\t\t| %d\t\t|\n", pcb[i].pid, pcb[i].tid, (pcb[i].t_state == 1)?1:0, (pcb[i].t_state == 2)?1:0, (pcb[i].t_state == 3)?1:0, (pcb[i].t_state == 4)?1:0, (pcb[i].t_state == 5)?1:0, (pcb[i].p_type == Student)?"Student": "Bartender", pcb[i].lb_required, pcb[i].lb_consumed, pcb[i].TT);
     }
-    printf("+-------+-------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+\n");    
+    printf("+-------+-------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+\n");    
 }
 
-
-void main () {
+int main () {
     // Student data structure to store all student threads
     PCB students[NUM_STUDENTS];
 
@@ -87,10 +92,27 @@ void main () {
     sem_init(&barrel_refill, 0, 0);
 
     // create the bartender thread
-    pthread_t Bartender;
+    pthread_t Bartender;   
 
+    int num_students = 0;
+    int time_to_display = 0;
+    // accept user input number student threads to use
+    printf("\nSTUDENT BARTENDER THREAD SYNCHRONIZATION SIMMULATION >----------------------------\n");
+    printf("\nEnter the amount of students and the program will do the rest [maximum of 15 students]: ");
+    scanf("%d", &num_students);
+    printf("\nWould you like to modify the time taken to display the current state of the threads [To use default of 2 enter <0>]: ");
+    scanf("%d", &time_to_display);
 
-   
+    if (num_students == 0) {
+        printf("The simmulation is complete no student was entered");
+        return 0;
+    }
+
+    if (time_to_display == 0){
+        time_to_display = 2;
+    }
+
+    printf("\n-> Simmulation Started\n");
 
     bartender.pid = -1;
     // returns 0 if the thread was successfully created
@@ -102,11 +124,9 @@ void main () {
     
 
     sleep(4);
-    // TODO number of thread should be entered by the user
-
-    pthread_t thread[NUM_STUDENTS];
+    pthread_t thread[num_students];
     // create 3 student threads
-    for (int i = 0; i < NUM_STUDENTS; i++) {
+    for (int i = 0; i < num_students; i++) {
         // sets the process id to the current index
         students[i].pid = i;
         students[i].tid = i + 1;
@@ -120,10 +140,16 @@ void main () {
     // status display
     // interrupt summutlation and display pcb state currnetly
     while (true) {
-        // TODO determine the size of the student array
-        // TODO use system interrup to pause and resume processing
-        print_thread_values(students, NUM_STUDENTS);
-        sleep(2);
+        print_thread_values(students, num_students);
+        printf("\nNumber of student threads running: %d\n", running_threads);
+
+        sleep(time_to_display);
+
+        if (barrel == 0 && bartender.wake_count == 0 || running_threads == 0)
+        {
+            return 0;
+        }
+        
     }   
     sem_destroy(&barrel_access);
 }
@@ -131,51 +157,59 @@ void main () {
 
 void* student_function(void* arg) {
     // sData is for student data
+    time_t start;
+    time(&start);
+    // register as a running thread
+    pthread_mutex_lock(&running_mutex);
+    running_threads++;
+    pthread_mutex_unlock(&running_mutex);
+
     PCB *sData = (PCB*) arg;
-    bool served = false;
+    bool served = false;   
 
     sData->p_type = Student;
     pcb_initialize(sData); 
 
-
-
     while (sData->lb_consumed != sData->lb_required) {
         sem_wait(&barrel_access);
-        // printf("Student %d has access to the barrel barrel has %d sevings left\n", sData->pid, barrel);
-
+        // critical section.
         if (barrel == 0){
             if(bartender.t_state == waiting) {
-                // printf("waking up the bartender\n");
                 sem_post(&barrel_refill);
                 sleep(1);
             } else if (bartender.t_state == refilling) {
-                // printf("The barrel is being refilled \n");
                 sleep(1);
             } else if (bartender.t_state == terminated) {
-                // printf("Student left the bar --> no more liquor and bartender dead\n");
                 sem_post(&barrel_access);
                 break;                
             }
         } else {
-            // printf("getting served\n");
             get_serving(sData, &served);
             sleep(1);
         }
     
         sem_post(&barrel_access);
-        // printf("Student %d left critical section\n", sData->pid);
         drink_and_think(sData, &served);
         sData->t_state = waiting;
     }
 
-    
+    time_t stop;
+    time(&stop);
+
+    sData->TT = (int)stop - (int)start;
     printf("Student %d was terminated\n", sData->pid);
     sData->t_state = terminated;
+
+    pthread_mutex_lock(&running_mutex);
+    running_threads--;
+    pthread_mutex_unlock(&running_mutex);
 
     sleep(3);
 }
 
 void* bartender_function(void* arg) {
+    time_t start;
+    time(&start);
     // bData is for bartender data
     PCB *bData = (PCB*) arg;
 
@@ -185,20 +219,26 @@ void* bartender_function(void* arg) {
 
     // printf("bartender started\n");
     while (bData->wake_count > 0) {
-        // printf("bartender is sleeping\n");
+        printf("Bartender is sleeping\n");
         sem_wait(&barrel_refill);
-        // printf("bartender needs to sleep %d times before death\n", bData->wake_count);
+        printf("\nBartender was woken up\n");
+        printf("Bartender needs to sleep %d times before death\n", bData->wake_count);
         refill_barrel(bData);
-        // printf("BARREL FILLED\n");
+        printf("BARREL FILLED\n");
     }   
 
+    time_t stop;
+    time(&stop);
+
+    bData->TT = (int)stop - (int)start;
+
     printf("The bartender died of crippling depression after serving college kids all night\n");
+    printf("Bartender thread terminated\n");
     bData->t_state = terminated;
 }
 
 
 void pcb_initialize(PCB *pcb) {
-    // rand() % 4 + 1
     pcb->t_state = waiting;
     pcb->TT = 0;
     if (pcb->p_type == Bartender) {
@@ -207,7 +247,7 @@ void pcb_initialize(PCB *pcb) {
         pcb->wake_count = 3;
     } else {
         pcb->wake_count = -1;
-        pcb->lb_required = rand() % 4 + 1;
+        pcb->lb_required = rand() % 5 + 1;
         pcb->lb_consumed = 0;
     }
 }
@@ -221,9 +261,8 @@ void get_serving(PCB* s, bool* served){
 
 void refill_barrel(PCB* b){
     b->t_state = refilling;
-    // printf("Bartender is doing a refill\n");
+    printf("Bartender is doing a refill\n");
     sleep(2);
-    // TODO make bartender refill to random value
     barrel = rand() % 50 + 1;
     b->wake_count--;
     b->t_state = waiting;
